@@ -16,7 +16,7 @@ router.post("/signup", (req, res) => {
     User.findOne({ username: req.body.username }).then((data) => {
         if (data === null) {
             const hash = bcrypt.hashSync(req.body.password, 10);
-            const lowerUsername = req.body.username.toLowerCase();
+            const lowerUsername = req.body.username;
             const newUser = new User({
                 name: req.body.name,
                 username: lowerUsername,
