@@ -18,10 +18,10 @@ router.post("/signup", (req, res) => {
             const hash = bcrypt.hashSync(req.body.password, 10);
             const lowerUsername = req.body.username.toLowerCase();
             const newUser = new User({
+                name: req.body.name,
                 username: lowerUsername,
                 password: hash,
                 token: uid2(32),
-                canBookmark: true,
             });
 
             newUser.save().then((newDoc) => {
@@ -42,7 +42,12 @@ router.post("/signin", (req, res) => {
 
     User.findOne({ username: req.body.username }).then((data) => {
         if (data && bcrypt.compareSync(req.body.password, data.password)) {
-            res.json({ result: true, token: data.token });
+            res.json({
+                result: true,
+                token: data.token,
+                username: data.username,
+                name: data.name,
+            });
         } else {
             res.json({
                 result: false,

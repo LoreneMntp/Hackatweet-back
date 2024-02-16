@@ -8,15 +8,14 @@ const Trends = require("../models/trends");
 
 router.post("/addTweet", async function (req, res) {
     if (!checkBody(req.body, ["username", "token", "content"])) {
-        res.json({ result: false, error: "Missing or empty fields" });
-        return;
+        return res.json({ result: false, error: "Missing or empty fields" });
     }
 
     findUserId(req.body.username, req.body.token).then(async (id) => {
         if (!id) {
-            res.json({ result: false, error: "User not found" });
-            return;
+            return res.json({ result: false, error: "User not found" });
         }
+
         const trends = searchTrendFromContent(req.body.content);
         let trendIds = [];
 
@@ -41,18 +40,57 @@ router.post("/addTweet", async function (req, res) {
             tweetedBy: id,
             likedBy: [],
             trends: trendIds,
+            createdAt: Date.now(),
         });
 
-        newTweet.save().then((tweet) => {
-            res.json({ result: true, tweet: tweet });
+        newTweet.save().then(async (tweet) => {
+            for (const trendId of trendIds) {
+                await Trends.findByIdAndUpdate(trendId, {
+                    $push: { tweets: tweet._id },
+                });
+            }
+
+            Tweets.find()
+                .populate({
+                    path: "tweetedBy",
+                    select: "username",
+                })
+                .populate("likedBy")
+                .populate("trends")
+                .then((tweets) => {
+                    res.json({ result: true, tweets: tweets });
+                });
         });
     });
 });
 
-router.get("/removeTweet/:id", function (req, res) {
-    Tweets.findByIdAndDelete(req.params.id).then((tweet) => {
-        res.json({ result: true, tweet: tweet });
-    });
+router.post("/removeTweet", function (req, res) {
+    if (!checkBody(req.body, ["username", "token", "tweetId"])) {
+        res.json({ result: false, error: "Missing or empty fields" });
+        return;
+    }
+
+    Tweets.findByIdAndDelete(req.body.tweetId)
+        .then((deletedTweet) => {
+            return Trends.updateMany(
+                { tweets: req.body.tweetId },
+                { $pull: { tweets: req.body.tweetId } }
+            ).then(() => {
+                return Trends.deleteMany({ tweets: { $size: 0 } });
+            });
+        })
+        .then(() => {
+            return Tweets.find()
+                .populate({
+                    path: "tweetedBy",
+                    select: "username",
+                })
+                .populate("likedBy")
+                .populate("trends");
+        })
+        .then((tweets) => {
+            res.json({ result: true, tweets: tweets });
+        });
 });
 
 router.get("/getTweets", function (req, res) {
@@ -88,7 +126,16 @@ router.post("/likeTweet", function (req, res) {
             }
 
             tweet.save().then((tweet) => {
-                res.json({ result: true, tweet: tweet });
+                Tweets.find()
+                    .populate({
+                        path: "tweetedBy",
+                        select: "username",
+                    })
+                    .populate("likedBy")
+                    .populate("trends")
+                    .then((tweets) => {
+                        res.json({ result: true, tweets: tweets });
+                    });
             });
         });
     });
@@ -101,13 +148,25 @@ router.get("/getTrends", function (req, res) {
 });
 
 router.get("/getTweetsByTrend/:trend", function (req, res) {
-    Tweets.find({ trends: { $in: [req.params.trend] } })
+    let formatedTrend = req.params.trend;
+    formatedTrend = "#" + formatedTrend;
+    Trends.find({ name: formatedTrend })
         .populate({
-            path: "tweetedBy",
-            select: "username",
+            path: "tweets",
+            populate: [
+                {
+                    path: "tweetedBy",
+                    select: "username",
+                },
+                {
+                    path: "likedBy",
+                    select: "username",
+                },
+                {
+                    path: "trends",
+                },
+            ],
         })
-        .populate("likedBy")
-        .populate("trends")
         .then((tweets) => {
             res.json({ result: true, tweets: tweets });
         });
